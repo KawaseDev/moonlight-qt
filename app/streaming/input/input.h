@@ -227,6 +227,7 @@ private:
     GamepadState m_GamepadState[MAX_GAMEPADS];
     QSet<uint32_t> m_KeysDown;
     bool m_FakeMouseCaptureActive;
+    uint32_t m_MouseButtonsDown = 0;
     bool m_KeyboardCaptureActive;
     bool m_PreferHostClipboard = false;
     bool m_ClipboardPasteKeyDown = false;

@@ -1,16 +1,19 @@
 # Focus input capture fork
 
-Based on Moonlight Qt v6.2.0. Streams capture keyboard shortcuts and confine the
-pointer when focused, including in windowed desktop mouse mode. Win+2 and other
+Based on Moonlight Qt v6.2.0. Streams capture keyboard shortcuts when focused. In desktop mouse mode the
+pointer can freely leave the stream window; leaving releases input capture. Win+2 and other
 system shortcuts are sent to the streaming host while capture is active, provided
 the compositor supports keyboard-shortcuts-inhibit (Mango does).
 
 - **Ctrl+Alt+Shift+Z** releases or recaptures mouse and keyboard.
 - While released, ordinary keyboard input stays local too.
 - Click the video or leave and return focus to recapture.
-- Focus loss releases capture and raises held remote keys.
+- Moving the pointer outside the stream or losing focus releases capture and
+  raises held remote keys and mouse buttons.
 - **Ctrl+Alt+Shift+K** toggles keyboard shortcut capture independently.
-- **Ctrl+Alt+Shift+L** toggles pointer confinement independently.
+- Desktop mouse mode is the default; **Ctrl+Alt+Shift+M** switches to relative
+  mouse mode for games. Relative mode captures the pointer until released.
+- **Ctrl+Alt+Shift+L** explicitly toggles pointer confinement in desktop mode.
 - Existing Moonlight shortcuts, including Ctrl+Alt+Shift+Q to disconnect, remain.
 
 New profiles default to capturing system keys Always. For existing profiles, set
@@ -52,7 +55,8 @@ make -f ../../tests/capture-lifecycle.mk capture-lifecycle
 QT_QPA_PLATFORM=offscreen SDL_VIDEODRIVER=wayland WAYLAND_DEBUG=1 ./capture-lifecycle
 ```
 
-It verifies windowed capture, pointer confinement, forwarding while captured,
+It verifies windowed capture, free pointer movement, release on pointer leave,
+held-button cleanup, optional pointer confinement, forwarding while captured,
 release shortcut behavior, suppression of keys while released, recapture, and
 focus loss. Wayland debug output records inhibitor creation and destruction.
 This does not replace an end-to-end streaming test with the host.

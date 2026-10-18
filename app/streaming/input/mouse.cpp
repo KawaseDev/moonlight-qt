@@ -6,6 +6,13 @@
 
 void SdlInputHandler::notifyMouseLeave()
 {
+    if (m_AbsoluteMouseMode && !m_PointerRegionLockActive && isCaptureActive()) {
+        // Desktop mode behaves like a local window: crossing its edge gives
+        // the desktop its shortcuts back, even before keyboard focus changes.
+        setCaptureActive(false);
+        raiseAllKeys();
+        return;
+    }
     if (m_NeedsManualCaptureOnLeave) {
         // SDL on Windows doesn't send the mouse button up until the mouse re-enters the window
         // after leaving it. This breaks some of the Aero snap gestures, so we'll capture it to
@@ -92,6 +99,12 @@ void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
                                BUTTON_ACTION_PRESS :
                                BUTTON_ACTION_RELEASE,
                            button);
+    if (event->state == SDL_PRESSED) {
+        m_MouseButtonsDown |= 1u << button;
+    }
+    else {
+        m_MouseButtonsDown &= ~(1u << button);
+    }
 }
 
 void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
@@ -293,10 +306,10 @@ void SdlInputHandler::updatePointerRegionLock()
         return;
     }
 
-    // Confine the pointer in windowed streams too. The release shortcut frees
-    // both devices; the existing pointer-lock shortcut remains available.
+    // Desktop mode lets the pointer cross window/monitor edges. Users can
+    // explicitly opt into confinement with Ctrl+Alt+Shift+L.
     if (!m_PointerRegionLockToggledByUser) {
-        m_PointerRegionLockActive = true;
+        m_PointerRegionLockActive = false;
     }
 
     // If region lock is enabled, grab the cursor so it can't accidentally leave our window.

@@ -356,6 +356,14 @@ void SdlInputHandler::setCaptureActive(bool active)
 {
     if (!active) {
         m_ClipboardPasteCancelled = true;
+        // A drag can cross the stream boundary before its button-up arrives.
+        // Release forwarded buttons so the host cannot be left dragging.
+        for (int button = BUTTON_LEFT; button <= BUTTON_X2; ++button) {
+            if (m_MouseButtonsDown & (1u << button)) {
+                LiSendMouseButtonEvent(BUTTON_ACTION_RELEASE, button);
+            }
+        }
+        m_MouseButtonsDown = 0;
     }
     if (active) {
         // If we're in relative mode, try to activate SDL's relative mouse mode

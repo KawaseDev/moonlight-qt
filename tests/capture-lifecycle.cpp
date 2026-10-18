@@ -8,6 +8,12 @@
 QAtomicInt g_AsyncLoggingEnabled{0};
 
 static int forwardedKeys;
+static int releasedMouseButtons;
+extern "C" int __wrap_LiSendMouseButtonEvent(char action, int)
+{
+    if (action == 0x08) ++releasedMouseButtons;
+    return 0;
+}
 extern "C" int __wrap_LiSendKeyboardEvent(short, char, char)
 {
     ++forwardedKeys;
@@ -58,7 +64,7 @@ int main(int argc, char** argv)
         SDL_PumpEvents();
         check(handler.isCaptureActive(), "focus captures input in windowed absolute mode");
         check(handler.isSystemKeyCaptureActive(), "system keyboard capture is enabled");
-        check(SDL_GetWindowMouseRect(window) != nullptr, "pointer is confined while captured");
+        check(SDL_GetWindowMouseRect(window) == nullptr, "desktop pointer can leave while keyboard shortcuts remain captured");
         SDL_KeyboardEvent key = {};
         key.state = SDL_PRESSED;
         key.keysym.sym = SDLK_a;
@@ -92,6 +98,30 @@ int main(int argc, char** argv)
         check(!handler.isCaptureActive() && !handler.isSystemKeyCaptureActive(), "focus loss releases both devices");
         handler.notifyFocusGained();
         check(handler.isSystemKeyCaptureActive(), "returning focus recaptures input");
+        SDL_MouseButtonEvent mouse = {};
+        mouse.button = SDL_BUTTON_LEFT;
+        mouse.state = SDL_PRESSED;
+        mouse.x = 100;
+        mouse.y = 100;
+        handler.handleMouseButtonEvent(&mouse);
+        key.state = SDL_PRESSED;
+        key.keysym.sym = SDLK_a;
+        key.keysym.scancode = SDL_SCANCODE_A;
+        key.keysym.mod = 0;
+        handler.handleKeyEvent(&key);
+        int keysBeforeLeave = forwardedKeys;
+        handler.notifyMouseLeave();
+        check(!handler.isCaptureActive() && !handler.isSystemKeyCaptureActive(), "leaving stream releases keyboard and mouse capture");
+        check(releasedMouseButtons == 1, "leaving during a drag releases the remote button");
+        check(forwardedKeys == keysBeforeLeave + 1, "leaving raises held remote keys");
+        handler.notifyFocusGained();
+        key.keysym.sym = SDLK_l;
+        key.keysym.scancode = SDL_SCANCODE_L;
+        key.keysym.mod = KMOD_CTRL | KMOD_ALT | KMOD_SHIFT;
+        handler.handleKeyEvent(&key);
+        check(SDL_GetWindowMouseRect(window) != nullptr, "explicit pointer lock remains available");
+        handler.notifyMouseLeave();
+        check(handler.isCaptureActive(), "explicit pointer lock retains capture");
         handler.setCaptureActive(false);
         SDL_PumpEvents();
     }
