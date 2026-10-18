@@ -38,7 +38,7 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
 
     case KeyComboUngrabInput:
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "Detected mouse capture toggle combo");
+                    "Detected mouse and keyboard capture toggle combo");
 
         // Stop handling future input
         setCaptureActive(!isCaptureActive());
@@ -224,6 +224,12 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
                 return;
             }
         }
+    }
+
+    // Release means local input only, including ordinary keys. Keep the
+    // shortcut handling above available so capture can be enabled again.
+    if (!isCaptureActive()) {
+        return;
     }
 
     // Set modifier flags

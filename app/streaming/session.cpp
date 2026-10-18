@@ -2055,6 +2055,9 @@ void Session::exec()
                     m_AudioMuted = false;
                 }
                 m_InputHandler->notifyFocusGained();
+                // Focus already captured input. A later pointer-enter event
+                // must not undo an explicit release made in the meantime.
+                needsFirstEnterCapture = false;
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();

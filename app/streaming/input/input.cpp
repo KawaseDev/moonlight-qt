@@ -272,13 +272,8 @@ void SdlInputHandler::setWindow(SDL_Window *window)
 
 void SdlInputHandler::notifyFocusLost()
 {
-    // Release mouse cursor when another window is activated (e.g. by using ALT+TAB).
-    // This lets user to interact with our window's title bar and with the buttons in it.
-    // Doing this while the window is full-screen breaks the transition out of FS
-    // (desktop and exclusive), so we must check for that before releasing mouse capture.
-    if (!(SDL_GetWindowFlags(m_Window) & SDL_WINDOW_FULLSCREEN) && !m_AbsoluteMouseMode) {
-        setCaptureActive(false);
-    }
+    // Never retain input capture after the stream loses keyboard focus.
+    setCaptureActive(false);
 
     // Raise all keys that are currently pressed. If we don't do this, certain keys
     // used in shortcuts that cause focus loss (such as Alt+Tab) may get stuck down.
@@ -287,6 +282,9 @@ void SdlInputHandler::notifyFocusLost()
 
 void SdlInputHandler::notifyFocusGained()
 {
+    // Capture windowed streams too. Explicit release remains in effect until
+    // the next focus transition, click into the video, or capture shortcut.
+    setCaptureActive(true);
 }
 
 bool SdlInputHandler::isCaptureActive()
@@ -301,7 +299,8 @@ bool SdlInputHandler::isCaptureActive()
 
 void SdlInputHandler::updateKeyboardGrabState()
 {
-    bool shouldGrab = m_CaptureSystemKeysMode != StreamingPreferences::CSK_OFF && isCaptureActive();
+    bool shouldGrab = m_CaptureSystemKeysMode != StreamingPreferences::CSK_OFF &&
+            isCaptureActive() && (SDL_GetWindowFlags(m_Window) & SDL_WINDOW_INPUT_FOCUS);
     if (shouldGrab) {
         Uint32 windowFlags = SDL_GetWindowFlags(m_Window);
         if (m_CaptureSystemKeysMode == StreamingPreferences::CSK_FULLSCREEN &&

@@ -153,7 +153,8 @@ Item {
             // with Session.exec() which requires no concurrent
             // gamepad usage.
             hintText.text = qsTr("Tip:") + " " + qsTr("Press %1 to disconnect your session").arg(SdlGamepadKeyNavigation.getConnectedGamepads() > 0 ?
-                                                  qsTr("Start+Select+L1+R1") : qsTr("Ctrl+Alt+Shift+Q"))
+                                                  qsTr("Start+Select+L1+R1") : qsTr("Ctrl+Alt+Shift+Q")) + "\n" +
+                            qsTr("Input is captured on focus. Press Ctrl+Alt+Shift+Z to release or recapture mouse and keyboard.")
 
             // Stop GUI gamepad usage now
             SdlGamepadKeyNavigation.disable()
