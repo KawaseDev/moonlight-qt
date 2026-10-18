@@ -28,6 +28,10 @@ void SdlInputHandler::notifyMouseLeave()
 
 void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
 {
+    if (event->state == SDL_PRESSED) {
+        // Don't paste later into a field selected after transfer was started.
+        m_ClipboardPasteCancelled = true;
+    }
     int button;
 
     if (event->which == SDL_TOUCH_MOUSEID) {

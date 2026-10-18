@@ -59,3 +59,49 @@ This does not replace an end-to-end streaming test with the host.
 
 To return to the distro launcher, remove the two installed commands and
 `~/.local/share/applications/com.moonlight_stream.Moonlight.desktop`.
+
+## Native Linux clipboard paste
+
+This fork can transfer **text from this PC to the streamed Linux PC's real
+clipboard** over SSH, then send an ordinary Ctrl+V only after acknowledgement.
+It does not use Moonlight's Unicode typing mechanism. Images, files, and copying
+from the streamed PC back to this PC are not supported by this helper.
+
+- Ctrl+V and Ctrl+Shift+V paste local text after upload succeeds.
+- Ctrl+Alt+Shift+V explicitly selects the local clipboard through the same helper.
+- After Ctrl+C/Ctrl+X inside the stream, normal paste uses the host clipboard until
+  local clipboard contents change or you leave and return to the stream.
+- Transfers run outside the stream event loop. Failure sends no paste. Releasing
+  capture, switching away, clicking, or typing another key cancels delayed paste.
+- The clipboard SSH target is bound to the Moonlight host UUID to prevent transfer
+  to a helper belonging to a different PC. Nothing is synchronized automatically.
+
+On the streamed PC, install Python 3, OpenSSH server, and either `wl-clipboard`
+(Wayland) or `xclip` (X11). Run `scripts/clipboard-host.py --install` inside the
+actual desktop session. It stores that session's display environment and installs
+`~/.local/bin/moonlight-clipboard-host`. Rerun installation if the display session
+changes. Optional `--authorized-key 'ssh-ed25519 ...'` installs a dedicated SSH key
+restricted to this helper; it cannot open a shell or forward connections.
+
+Configure a working key-based SSH alias on this PC, including an IdentityFile and
+ProxyJump if needed. Verify the server host key once interactively. Create
+`~/.config/moonlight-input-capture/clipboard.json` with mode 600:
+
+```json
+{"ssh_target": "moonlight-clipboard", "moonlight_host_uuid": "UUID from Moonlight's host profile"}
+```
+
+SSH uses BatchMode and StrictHostKeyChecking; authentication or host-key failure
+cannot silently fall back to another paste mechanism. No extra service port is
+opened by the clipboard helper. The SSH service itself must be reachable.
+
+Transport tests use the actual uploader and host-helper programs with isolated
+SSH/clipboard executables and a dummy SDL clipboard, without touching the user's
+clipboard or contacting a remote host:
+
+```sh
+cd build/app
+cp ../../scripts/clipboard-send.py .
+make -f ../../tests/capture-lifecycle.mk clipboard-paste
+python3 ../../tests/run-clipboard-test.py
+```

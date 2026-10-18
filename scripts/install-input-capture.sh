@@ -5,6 +5,7 @@ install_dir="$HOME/.local/lib/moonlight-input-capture"
 bin_dir="$HOME/.local/bin"
 application_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 install -Dm755 "$source_dir/build/app/moonlight" "$install_dir/moonlight"
+install -Dm755 "$source_dir/scripts/clipboard-send.py" "$install_dir/clipboard-send.py"
 mkdir -p "$bin_dir" "$application_dir"
 cat > "$bin_dir/moonlight-input-capture" <<'WRAPPER'
 #!/usr/bin/env bash

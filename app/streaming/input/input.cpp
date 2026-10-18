@@ -272,6 +272,7 @@ void SdlInputHandler::setWindow(SDL_Window *window)
 
 void SdlInputHandler::notifyFocusLost()
 {
+    m_ClipboardPasteKeyDown = false;
     // Never retain input capture after the stream loses keyboard focus.
     setCaptureActive(false);
 
@@ -282,6 +283,8 @@ void SdlInputHandler::notifyFocusLost()
 
 void SdlInputHandler::notifyFocusGained()
 {
+    // Coming back from another local app makes the local clipboard the source.
+    m_PreferHostClipboard = false;
     // Capture windowed streams too. Explicit release remains in effect until
     // the next focus transition, click into the video, or capture shortcut.
     setCaptureActive(true);
@@ -351,6 +354,9 @@ bool SdlInputHandler::isSystemKeyCaptureActive()
 
 void SdlInputHandler::setCaptureActive(bool active)
 {
+    if (!active) {
+        m_ClipboardPasteCancelled = true;
+    }
     if (active) {
         // If we're in relative mode, try to activate SDL's relative mouse mode
         if (m_AbsoluteMouseMode || SDL_SetRelativeMouseMode(SDL_TRUE) < 0) {

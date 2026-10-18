@@ -4,6 +4,7 @@
 #include "backend/computermanager.h"
 
 #include "SDL_compat.h"
+#include <future>
 
 struct GamepadState {
     SDL_GameController* controller;
@@ -150,6 +151,10 @@ public:
 
     void updateKeyboardGrabState();
 
+    bool isClipboardPastePending() const { return m_ClipboardUpload.valid(); }
+    void pollClipboardPaste();
+    void setClipboardHostId(const QString& id) { m_ClipboardHostId = id; }
+
     void updatePointerRegionLock();
 
     static
@@ -188,6 +193,8 @@ private:
 
     void performSpecialKeyCombo(KeyCombo combo);
 
+    bool pasteClipboardText(bool forceLocal);
+
     static
     Uint32 longPressTimerCallback(Uint32 interval, void* param);
 
@@ -221,6 +228,12 @@ private:
     QSet<uint32_t> m_KeysDown;
     bool m_FakeMouseCaptureActive;
     bool m_KeyboardCaptureActive;
+    bool m_PreferHostClipboard = false;
+    bool m_ClipboardPasteKeyDown = false;
+    QByteArray m_ClipboardAtHostCopy;
+    std::future<QString> m_ClipboardUpload;
+    bool m_ClipboardPasteCancelled = false;
+    QString m_ClipboardHostId;
     QString m_OldIgnoreDevices;
     QString m_OldIgnoreDevicesExcept;
     QStringList m_IgnoreDeviceGuids;

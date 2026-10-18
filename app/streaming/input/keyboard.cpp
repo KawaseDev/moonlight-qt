@@ -2,6 +2,11 @@
 
 #include <Limelight.h>
 #include "SDL_compat.h"
+#include <QCoreApplication>
+#include <QProcess>
+#include <QFileInfo>
+#include <QDir>
+#include <chrono>
 
 #define VK_0 0x30
 #define VK_A 0x41
@@ -106,31 +111,8 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "Detected type clipboard text combo");
 
-        // Force raise all keys to ensure that none of them interfere
-        // with the text we're going to type.
-        raiseAllKeys();
-
-        char* text;
-        if (SDL_HasClipboardText() && (text = SDL_GetClipboardText()) != nullptr) {
-            // Sending both CR and LF will lead to two newlines in the destination for
-            // each newline in the source, so we fix up any CRLFs into just a single LF.
-            for (char* c = text; *c != 0; c++) {
-                if (*c == '\r' && *(c + 1) == '\n') {
-                    // We're using strlen() rather than strlen() - 1 since we need to add 1
-                    // to copy the null terminator which is not included in strlen()'s count.
-                    memmove(c, c + 1, strlen(c));
-                }
-            }
-
-            // Send this text to the PC
-            LiSendUtf8TextEvent(text, (unsigned int)strlen(text));
-
-            // SDL_GetClipboardText() allocates, so we must free
-            SDL_free((void*)text);
-        }
-        else {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "No text in clipboard to paste!");
+        if (isCaptureActive() && pasteClipboardText(true)) {
+            m_ClipboardPasteKeyDown = true;
         }
         break;
     }
@@ -182,6 +164,81 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
     }
 }
 
+bool SdlInputHandler::pasteClipboardText(bool forceLocal)
+{
+    // A helper must be paired before local clipboard paste is available. Never
+    // fall back to Moonlight's character-by-character text injection.
+    const QString config = QDir::homePath() + "/.config/moonlight-input-capture/clipboard.json";
+    if (!QFileInfo::exists(config)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Native clipboard helper has not been configured");
+        return false;
+    }
+    if (m_ClipboardUpload.valid()) {
+        return true;
+    }
+    char* text = SDL_GetClipboardText();
+    if (text == nullptr) {
+        return false;
+    }
+    QByteArray clipboard(text);
+    SDL_free(text);
+    if (clipboard.isEmpty() ||
+            (!forceLocal && m_PreferHostClipboard && clipboard == m_ClipboardAtHostCopy)) {
+        // An empty local clipboard, or a copy made in the stream, uses native
+        // host paste. Never replace that with stale local clipboard contents.
+        return false;
+    }
+
+    m_PreferHostClipboard = false;
+    raiseAllKeys();
+    m_ClipboardPasteCancelled = false;
+    const QString sender = QCoreApplication::applicationDirPath() + "/clipboard-send.py";
+    const QString hostId = m_ClipboardHostId;
+    m_ClipboardUpload = std::async(std::launch::async, [clipboard, config, sender, hostId]() -> QString {
+        QProcess process;
+        process.start("python3", {sender, "--config", config, "--host-id", hostId});
+        if (!process.waitForStarted(1000)) {
+            return QStringLiteral("Cannot start clipboard transport");
+        }
+        process.write(clipboard);
+        process.closeWriteChannel();
+        if (!process.waitForFinished(7000)) {
+            process.kill();
+            process.waitForFinished(1000);
+            return QStringLiteral("Clipboard transfer timed out");
+        }
+        if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+            const QString detail = QString::fromUtf8(process.readAllStandardError()).left(512);
+            return detail.isEmpty() ? QStringLiteral("Clipboard transport failed") : detail;
+        }
+        return {};
+    });
+    return true;
+}
+
+void SdlInputHandler::pollClipboardPaste()
+{
+    if (!m_ClipboardUpload.valid() ||
+            m_ClipboardUpload.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+        return;
+    }
+    const QString error = m_ClipboardUpload.get();
+    if (!error.isEmpty()) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Native clipboard paste failed: %s", qUtf8Printable(error));
+        return;
+    }
+    if (m_ClipboardPasteCancelled || !isCaptureActive()) {
+        return;
+    }
+    // The real host clipboard has been set and acknowledged. Use a normal paste
+    // shortcut with explicit modifier transitions, never Unicode typing events.
+    raiseAllKeys();
+    LiSendKeyboardEvent2(0xA2, KEY_ACTION_DOWN, MODIFIER_CTRL, 0);
+    LiSendKeyboardEvent2(0x56, KEY_ACTION_DOWN, MODIFIER_CTRL, 0);
+    LiSendKeyboardEvent2(0x56, KEY_ACTION_UP, MODIFIER_CTRL, 0);
+    LiSendKeyboardEvent2(0xA2, KEY_ACTION_UP, 0, 0);
+}
+
 void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
 {
     short keyCode;
@@ -192,6 +249,11 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
     if (event->repeat) {
         // Ignore repeat key down events
         SDL_assert(event->state == SDL_PRESSED);
+        return;
+    }
+
+    if (event->state == SDL_RELEASED && event->keysym.scancode == SDL_SCANCODE_V && m_ClipboardPasteKeyDown) {
+        m_ClipboardPasteKeyDown = false;
         return;
     }
 
@@ -230,6 +292,29 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
     // shortcut handling above available so capture can be enabled again.
     if (!isCaptureActive()) {
         return;
+    }
+
+    if (m_ClipboardUpload.valid() && event->state == SDL_PRESSED &&
+            event->keysym.scancode != SDL_SCANCODE_V &&
+            event->keysym.scancode != SDL_SCANCODE_LCTRL && event->keysym.scancode != SDL_SCANCODE_RCTRL &&
+            event->keysym.scancode != SDL_SCANCODE_LSHIFT && event->keysym.scancode != SDL_SCANCODE_RSHIFT) {
+        m_ClipboardPasteCancelled = true;
+    }
+
+    // Preserve native copy/paste inside the host, while making Ctrl+V after
+    // copying in a local app send this computer's UTF-8 clipboard text.
+    if (event->state == SDL_PRESSED && (event->keysym.mod & KMOD_CTRL) &&
+            !(event->keysym.mod & (KMOD_ALT | KMOD_GUI))) {
+        if (event->keysym.scancode == SDL_SCANCODE_C || event->keysym.scancode == SDL_SCANCODE_X) {
+            char* text = SDL_GetClipboardText();
+            m_ClipboardAtHostCopy = text ? QByteArray(text) : QByteArray();
+            SDL_free(text);
+            m_PreferHostClipboard = true;
+        }
+        else if (event->keysym.scancode == SDL_SCANCODE_V && pasteClipboardText(false)) {
+            m_ClipboardPasteKeyDown = true;
+            return;
+        }
     }
 
     // Set modifier flags
