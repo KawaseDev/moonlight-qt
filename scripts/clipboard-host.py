@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -46,7 +47,7 @@ def install(authorized_key=None):
         keyfile.chmod(0o600)
     print('Clipboard helper installed. No network listener is opened; transport uses SSH.')
     print('SSH username:', os.environ.get('USER', ''))
-    subprocess.run(['hostname', '-I'], check=False)
+    print('Hostname:', socket.gethostname())
     print('Session type:', os.environ.get('XDG_SESSION_TYPE', 'unknown'))
     print('SSH service must be reachable for clipboard transfer.')
 
